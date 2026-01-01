@@ -1,0 +1,316 @@
+﻿<!DOCTYPE html>
+<html lang="sk">
+  <head>
+    <meta charset="UTF-8" />
+    <title>MINV test</title>
+    <script src="http://localhost:35729/livereload.js"></script>
+    <script src="./minv_data.js"></script>
+    <style>
+      body {
+        margin: 0;
+        background: #0f0f0f;
+        height: 100vh;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        font-family: Arial, sans-serif;
+        color: #0f0;
+      }
+      .game {
+        width: 100%;
+        max-width: 900px;
+        padding: 36px 42px;
+        background: rgba(0, 0, 0, 0.6);
+        border-radius: 12px;
+        box-shadow: 0 0 40px rgba(0, 255, 0, 0.15);
+        position: relative;
+      }
+      .question {
+        font-size: 26px;
+        margin-bottom: 18px;
+        text-shadow: 0 0 8px rgba(0, 255, 0, 0.6);
+      }
+
+      .question-image {
+        width: min(80vw, 520px);
+        max-height: 45vh;
+        object-fit: contain;
+        display: none;
+        margin: 18px auto 28px;
+        border-radius: 10px;
+      }
+
+      .answers {
+        display: flex;
+        flex-direction: column;
+        gap: 16px;
+      }
+      button {
+        padding: 14px 18px;
+        font-size: 16px;
+        background: #000;
+        color: #0f0;
+        border: 2px solid #0f0;
+        border-radius: 10px;
+        cursor: pointer;
+      }
+      .answers button {
+        line-height: 1.6;
+      }
+      button.correct {
+        background: #0f0;
+        color: #000;
+      }
+      button.wrong {
+        background: #300;
+        color: #f88;
+        border-color: #f00;
+      }
+      #nextBtn {
+        margin-top: 24px;
+        display: none;
+      }
+      /* FLOAT ICON */
+      #solvedIcon {
+        position: fixed;
+        right: 22px;
+        bottom: 22px;
+        width: 46px;
+        height: 46px;
+        border-radius: 50%;
+        background: #000;
+        border: 2px solid #0f0;
+        color: #0f0;
+        font-size: 22px;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        cursor: pointer;
+        box-shadow: 0 0 20px rgba(0, 255, 0, 0.4);
+        z-index: 100;
+      }
+      /* MODAL */
+      .modal {
+        position: fixed;
+        inset: 0;
+        background: rgba(0, 0, 0, 0.9);
+        display: none;
+        justify-content: center;
+        align-items: center;
+        z-index: 200;
+      }
+      .modal-content {
+        background: #000;
+        padding: 24px;
+        border: 2px solid #0f0;
+        border-radius: 12px;
+        width: 95%;
+        max-width: 1000px;
+        max-height: 90vh;
+        overflow-y: auto;
+      }
+      .solved-item {
+        border-bottom: 1px solid rgba(0, 255, 0, 0.3);
+        padding: 16px 0;
+      }
+      .solved-grid {
+        display: grid;
+        grid-template-columns: 1fr 200px;
+        gap: 16px;
+        margin-top: 10px;
+      }
+      .answers-mini div.correct {
+        color: #000;
+        background: #0f0;
+        padding: 4px 8px;
+        border-radius: 6px;
+        margin-bottom: 4px;
+      }
+      .answers-mini div {
+        margin-bottom: 4px;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="game">
+      <div class="question" id="question">Nacitavam otazku...</div>
+      <img id="questionImage" class="question-image" />
+      <div class="answers" id="answers"></div>
+      <button id="nextBtn">Next</button>
+    </div>
+    <div id="solvedIcon" title="Zodpovedane otazky">sp</div>
+    <div class="modal" id="modal">
+      <div class="modal-content">
+        <button onclick="closeModal()">Zavriet</button>
+        <button
+          onclick="resetAllQuestions()"
+          style="margin-left: 4px; border-color: white; color: white"
+        >
+          Vrátiť všetko
+        </button>
+        <div id="modalBody"></div>
+      </div>
+    </div>
+    <script>
+      const IMAGE_ORIGIN = "./images/pcpfiles/";
+      const STORAGE_KEY = "minv_correct_questions";
+      const test = data[0][0];
+      let solved = JSON.parse(localStorage.getItem(STORAGE_KEY) || "[]");
+      let currentKey = null;
+      function unsolvedKeys() {
+        return Object.keys(test.otazky).filter((k) => !solved.includes(k));
+      }
+      function loadQuestion() {
+        const keys = unsolvedKeys();
+        if (!keys.length) {
+          document.getElementById("question").textContent =
+            "Vsetky otazky su zodpovedane";
+          document.getElementById("answers").innerHTML = "";
+          document.getElementById("questionImage").style.display = "none";
+          return;
+        }
+        currentKey = keys[Math.floor(Math.random() * keys.length)];
+        const q = test.otazky[currentKey][0];
+        const answers = test.odpovede[currentKey];
+        document.getElementById("question").textContent = q.text;
+        const img = document.getElementById("questionImage");
+        if (q.obrazok) {
+          img.src = IMAGE_ORIGIN + q.obrazok.replace(/^\/+/, "");
+          img.style.display = "block";
+        } else img.style.display = "none";
+        const answersEl = document.getElementById("answers");
+        answersEl.innerHTML = "";
+        document.getElementById("nextBtn").style.display = "none";
+        answers.forEach((a, i) => {
+          const b = document.createElement("button");
+          const letter = String.fromCharCode(97 + i);
+          b.textContent = letter + ") " + a.odpoved;
+          b.onclick = () => handleAnswer(i, q.platna - 1, b);
+          answersEl.appendChild(b);
+        });
+      }
+      function handleAnswer(i, correct, btn) {
+        document
+          .querySelectorAll(".answers button")
+          .forEach((b) => (b.disabled = true));
+        document
+          .querySelectorAll(".answers button")
+          [correct].classList.add("correct");
+        if (i === correct && !solved.includes(currentKey)) {
+          solved.push(currentKey);
+          localStorage.setItem(STORAGE_KEY, JSON.stringify(solved));
+        } else if (i !== correct) {
+          btn.classList.add("wrong");
+        }
+        document.getElementById("nextBtn").style.display = "inline-block";
+      }
+      document.getElementById("nextBtn").onclick = loadQuestion;
+      document.getElementById("solvedIcon").onclick = () => {
+        const body = document.getElementById("modalBody");
+        body.innerHTML = "";
+        solved.forEach((k) => {
+          const q = test.otazky[k][0];
+          const answers = test.odpovede[k];
+          const item = document.createElement("div");
+          item.className = "solved-item";
+          let html = "<strong>" + q.text + "</strong>";
+          html += "<div class='solved-grid'>";
+          html += "<div class='answers-mini'>";
+          answers.forEach((a, i) => {
+            const cls = i + 1 === q.platna ? "correct" : "";
+            html +=
+              "<div class='" +
+              cls +
+              "'>" +
+              String.fromCharCode(65 + i) +
+              ") " +
+              a.odpoved +
+              "</div>";
+          });
+          html += "</div>";
+          if (q.obrazok) {
+            html +=
+              "<img src='" +
+              IMAGE_ORIGIN +
+              q.obrazok.replace(/^\/+/, "") +
+              "' style='max-width:180px'>";
+          }
+          html += "</div>";
+          html +=
+            "<button onclick='returnQuestion(\"" +
+            k +
+            "\")'>Vratit otazku</button>";
+          item.innerHTML = html;
+          body.appendChild(item);
+        });
+        document.getElementById("modal").style.display = "flex";
+      };
+      function returnQuestion(k) {
+        solved = solved.filter((x) => x !== k);
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(solved));
+        refreshSolvedModal();
+      }
+
+      function refreshSolvedModal() {
+        const body = document.getElementById("modalBody");
+        body.innerHTML = "";
+        solved.forEach((k) => {
+          const q = test.otazky[k][0];
+          const answers = test.odpovede[k];
+
+          const item = document.createElement("div");
+          item.className = "solved-item";
+
+          let html = "<strong>" + q.text + "</strong>";
+          html += "<div class='solved-grid'><div class='answers-mini'>";
+
+          answers.forEach((a, i) => {
+            const cls = i + 1 === q.platna ? "correct" : "";
+            html +=
+              "<div class='" +
+              cls +
+              "'>" +
+              String.fromCharCode(65 + i) +
+              ") " +
+              a.odpoved +
+              "</div>";
+          });
+
+          html += "</div>";
+
+          if (q.obrazok) {
+            html +=
+              "<img src='" +
+              IMAGE_ORIGIN +
+              q.obrazok.replace(/^\/+/, "") +
+              "' style='max-width:180px'>";
+          }
+
+          html += "</div>";
+          html +=
+            "<button onclick='returnQuestion(\"" +
+            k +
+            "\")'>Vratit otazku</button>";
+
+          item.innerHTML = html;
+          body.appendChild(item);
+        });
+      }
+
+      function resetAllQuestions() {
+        if (!confirm("Naozaj chces vratit vsetky otazky?")) return;
+
+        solved = [];
+        localStorage.removeItem(STORAGE_KEY);
+
+        closeModal();
+        loadQuestion();
+      }
+
+      function closeModal() {
+        document.getElementById("modal").style.display = "none";
+      }
+      loadQuestion();
+    </script>
+  </body>
+</html>
